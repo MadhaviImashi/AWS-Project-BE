@@ -3,6 +3,9 @@
 /node_modules
 /build
 
+# AWS CLI installer
+*.pkg
+
 # Logs
 logs
 *.log
