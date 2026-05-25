@@ -2,9 +2,11 @@ import express from 'express';
 import serverless from 'serverless-http';
 import { getDb } from '../../shared/db';
 import { requireAdmin, getUserSub } from '../../shared/auth';
+import { corsMiddleware } from '../../shared/cors';
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 const app = express();
+app.use(corsMiddleware);
 app.use(express.json());
 
 const s3 = new S3Client({ region: process.env.AWS_REGION ?? 'us-east-1' });

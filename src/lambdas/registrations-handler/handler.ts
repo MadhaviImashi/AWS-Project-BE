@@ -3,9 +3,11 @@ import serverless from 'serverless-http';
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { getDb } from '../../shared/db';
 import { getUserSub, getUserEmail, getClaims } from '../../shared/auth';
+import { corsMiddleware } from '../../shared/cors';
 import type { EmailPayload } from '../email-handler/handler';
 
 const app = express();
+app.use(corsMiddleware);
 app.use(express.json());
 
 const lambda = new LambdaClient({ region: process.env.AWS_REGION ?? 'us-east-1' });
