@@ -22,7 +22,7 @@ export const getUserEmail = (req: Request): string => {
 
 export const isAdmin = (req: Request): boolean => {
   const groups = getClaims(req)['cognito:groups'] ?? '';
-  return groups.includes('admins');
+  return groups.includes('Admins');
 };
 
 export const requireAdmin = (req: Request, res: Response, next: NextFunction): void => {
