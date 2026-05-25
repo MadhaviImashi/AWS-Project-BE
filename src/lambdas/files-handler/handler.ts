@@ -2,10 +2,8 @@ import express from 'express';
 import serverless from 'serverless-http';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { corsMiddleware } from '../../shared/cors';
 
 const app = express();
-app.use(corsMiddleware);
 app.use(express.json());
 
 const s3 = new S3Client({ region: process.env.AWS_REGION ?? 'us-east-1' });
