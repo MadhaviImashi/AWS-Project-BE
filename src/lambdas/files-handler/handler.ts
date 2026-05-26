@@ -1,6 +1,6 @@
 import express from 'express';
 import serverless from 'serverless-http';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const app = express();
@@ -51,6 +51,22 @@ router.post('/files/upload-url', async (req, res) => {
   } catch (err) {
     console.error('POST /files/upload-url error:', err);
     res.status(500).json({ error: 'Failed to generate upload URL' });
+  }
+});
+
+// GET /api/v1/files/view-url?s3Key=...  — generate pre-signed URL for viewing a file
+router.get('/files/view-url', async (req, res) => {
+  const { s3Key } = req.query;
+  if (!s3Key || typeof s3Key !== 'string') {
+    return res.status(400).json({ error: 's3Key is required' });
+  }
+  try {
+    const command = new GetObjectCommand({ Bucket: BUCKET, Key: s3Key });
+    const viewUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
+    res.json({ viewUrl });
+  } catch (err) {
+    console.error('GET /files/view-url error:', err);
+    res.status(500).json({ error: 'Failed to generate view URL' });
   }
 });
 
