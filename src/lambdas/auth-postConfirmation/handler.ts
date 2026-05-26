@@ -22,7 +22,7 @@ export const handler = async (event: any) => {
       new AdminAddUserToGroupCommand({
         UserPoolId: userPoolId,
         Username: userName,
-        GroupName: 'users',
+        GroupName: 'Users',
       }),
     );
     console.log(`Added ${userName} to "users" group`);
