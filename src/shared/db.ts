@@ -6,24 +6,23 @@ const secretsClient = new SecretsManagerClient({ region: process.env.AWS_REGION 
 let initPromise: Promise<Pool> | null = null;
 
 const createPool = async (): Promise<Pool> => {
-  let host: string, database: string, user: string, password: string, port: number;
+  const host = process.env.DB_HOST!;
+  const database = process.env.DB_NAME!;
+  const port = parseInt(process.env.DB_PORT ?? '5432');
+
+  let user: string;
+  let password: string;
 
   if (process.env.DB_SECRET_ARN) {
     const response = await secretsClient.send(
       new GetSecretValueCommand({ SecretId: process.env.DB_SECRET_ARN }),
     );
     const secret = JSON.parse(response.SecretString!);
-    host = secret.host;
-    database = secret.dbname;
     user = secret.username;
     password = secret.password;
-    port = secret.port ?? 5432;
   } else {
-    host = process.env.DB_HOST!;
-    database = process.env.DB_NAME!;
     user = process.env.DB_USER!;
     password = process.env.DB_PASSWORD!;
-    port = parseInt(process.env.DB_PORT ?? '5432');
   }
 
   return new Pool({
