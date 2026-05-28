@@ -1,98 +1,148 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# CW Events — Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Serverless backend for the CW Events platform. Each feature is an independent AWS Lambda function built with Express and bundled with esbuild.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Tech Stack
 
-## Description
+- **Runtime**: Node.js 22
+- **Language**: TypeScript
+- **HTTP Layer**: Express + `serverless-http` (adapts Express to Lambda)
+- **Bundler**: esbuild (bundles each Lambda into a single `index.js` + zip)
+- **Database Client**: `pg` (node-postgres)
+- **Package Manager**: pnpm
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## AWS Resources
 
-## Project setup
+| Resource | Purpose |
+|----------|---------|
+| **AWS Lambda** | Runs each handler as an independent serverless function |
+| **API Gateway (HTTP API)** | Routes HTTP requests to Lambda functions; handles CORS and JWT authorization |
+| **Amazon RDS (PostgreSQL)** | Stores users, events, event files, and registrations |
+| **AWS Secrets Manager** | Stores RDS credentials (auto-rotated); Lambdas fetch username/password at runtime |
+| **Amazon S3** | Stores uploaded event files; accessed via pre-signed URLs |
+| **Amazon Cognito** | User Pool for authentication; issues JWTs validated by API Gateway |
+| **Amazon SES** | Sends registration confirmation emails |
+| **AWS IAM** | Grants each Lambda the minimum permissions it needs |
 
-```bash
-$ pnpm install
+## Lambda Functions
+
+### `cw-events-handler`
+Handles all event CRUD and related admin operations.
+
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| GET | `/api/v1/events` | None | List all events with files |
+| GET | `/api/v1/events/:id` | None | Get single event with files |
+| POST | `/api/v1/events` | Admin | Create event |
+| PUT | `/api/v1/events/:id` | Admin | Update event |
+| DELETE | `/api/v1/events/:id` | Admin | Delete event (cascades to files and registrations) |
+| POST | `/api/v1/events/:id/files` | Admin | Record a file after S3 upload |
+| DELETE | `/api/v1/events/:id/files/:fileId` | Admin | Remove file from DB and S3 |
+| GET | `/api/v1/events/:id/registrations` | Admin | List registrations for an event |
+
+**Environment variables:** `DB_SECRET_ARN`, `DB_HOST`, `DB_NAME`, `DB_SSL`, `S3_BUCKET_NAME`, `AWS_REGION`
+
+---
+
+### `cw-registration-handler`
+Handles user event registrations.
+
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| POST | `/api/v1/registrations/:eventId` | User | Register for an event; fires confirmation email async |
+| DELETE | `/api/v1/registrations/:eventId` | User | Cancel registration |
+| GET | `/api/v1/registrations/me` | User | List current user's registrations |
+
+**Environment variables:** `DB_SECRET_ARN`, `DB_HOST`, `DB_NAME`, `DB_SSL`, `EMAIL_HANDLER_FUNCTION_NAME`, `AWS_REGION`
+
+---
+
+### `cw-file-handler`
+Generates S3 pre-signed URLs for browser-direct uploads and views.
+
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| POST | `/api/v1/files/upload-url` | Admin | Returns a pre-signed PUT URL (5 min expiry) and the S3 key |
+| GET | `/api/v1/files/view-url` | User | Returns a pre-signed GET URL (1 hr expiry) for a given S3 key |
+
+**Environment variables:** `S3_BUCKET_NAME`, `AWS_REGION`
+
+---
+
+### `cw-email-handler`
+Invoked asynchronously (fire-and-forget) by `cw-registration-handler` to send emails via SES. Does not expose HTTP routes.
+
+**Environment variables:** `SES_FROM_EMAIL`, `AWS_REGION`
+
+---
+
+### `cw-auth-postConfirmation`
+Cognito post-confirmation trigger — fires automatically when a user confirms their email.
+
+- Adds the user to the `Users` Cognito group
+- Creates a record in the `users` DB table (`cognito_sub`, `email`, `name`)
+
+**Environment variables:** `DB_SECRET_ARN`, `DB_HOST`, `DB_NAME`, `DB_SSL`, `AWS_REGION`
+
+---
+
+## Shared Modules
+
+| File | Purpose |
+|------|---------|
+| `src/shared/db.ts` | Lazy-initialized PostgreSQL connection pool; fetches credentials from Secrets Manager if `DB_SECRET_ARN` is set, otherwise falls back to `DB_USER`/`DB_PASSWORD` env vars |
+| `src/shared/auth.ts` | JWT claim helpers (`getUserSub`, `getUserEmail`, `getClaims`, `requireAdmin`) — reads from API Gateway's `requestContext.authorizer.jwt.claims` |
+
+## Database Schema
+
+```
+users               — cognito_sub, email, name (created on sign-up via Cognito trigger)
+events              — title, date, time, description, created_by
+event_files         — event_id, s3_key, file_name, file_type
+event_registrations — event_id, user_sub, user_email, user_name
 ```
 
-## Compile and run the project
+Full schema: [`src/shared/db/schema.sql`](src/shared/db/schema.sql)
+
+## Build
+
+Each Lambda is bundled independently with esbuild into a single `index.js` then zipped:
 
 ```bash
-# development
-$ pnpm run start
+# Build all Lambdas
+pnpm build:lambdas
 
-# watch mode
-$ pnpm run start:dev
-
-# production mode
-$ pnpm run start:prod
+# Build a single Lambda
+pnpm build:lambdas events-handler
 ```
 
-## Run tests
-
-```bash
-# unit tests
-$ pnpm run test
-
-# e2e tests
-$ pnpm run test:e2e
-
-# test coverage
-$ pnpm run test:cov
-```
+Output: `dist/<lambda-name>.zip` — ready to upload to AWS Lambda.
 
 ## Deployment
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+CI/CD is handled by GitHub Actions (`.github/workflows/deploy.yml`). On every push to `main`:
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+1. Installs dependencies
+2. Runs `pnpm build:lambdas`
+3. Deploys each zip via `aws lambda update-function-code`
 
-```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
+> Note: the workflow only updates function **code**, not environment variables. Env vars are managed manually in the AWS Lambda console.
+
+## Local Development
+
+Since handlers use Express + `serverless-http`, they can be run as plain Express servers locally. Create a `.env` file with direct DB credentials (skipping Secrets Manager):
+
+```env
+DB_HOST=localhost
+DB_NAME=codewave
+DB_USER=postgres
+DB_PASSWORD=your_password
+DB_PORT=5432
+DB_SSL=false
+S3_BUCKET_NAME=your-bucket-name
+AWS_REGION=ap-southeast-1
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Then create a local entry point that imports the Express `app` from the handler and calls `app.listen(3001)`.
 
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+For full Lambda emulation (including the event/context format), use [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html) with a `template.yaml`.
