@@ -15,7 +15,7 @@ const router = express.Router();
 // GET /api/v1/events
 router.get('/events', async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const result = await db.query(`
       SELECT e.*,
         COALESCE(json_agg(ef.*) FILTER (WHERE ef.id IS NOT NULL), '[]') AS files
@@ -34,7 +34,7 @@ router.get('/events', async (req, res) => {
 // GET /api/v1/events/:id
 router.get('/events/:id', async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const { rows } = await db.query(`
       SELECT e.*,
         COALESCE(json_agg(ef.*) FILTER (WHERE ef.id IS NOT NULL), '[]') AS files
@@ -59,7 +59,7 @@ router.post('/events', requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 'title, date, and time are required' });
   }
   try {
-    const db = getDb();
+    const db = await getDb();
     const { rows } = await db.query(`
       INSERT INTO events (title, date, time, description, created_by)
       VALUES ($1, $2, $3, $4, $5)
@@ -76,7 +76,7 @@ router.post('/events', requireAdmin, async (req, res) => {
 router.put('/events/:id', requireAdmin, async (req, res) => {
   const { title, date, time, description } = req.body;
   try {
-    const db = getDb();
+    const db = await getDb();
     const { rows } = await db.query(`
       UPDATE events
       SET title = COALESCE($1, title),
@@ -99,7 +99,7 @@ router.put('/events/:id', requireAdmin, async (req, res) => {
 // DELETE /api/v1/events/:id  [admin]
 router.delete('/events/:id', requireAdmin, async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
 
     // Fetch files to delete from S3
     const filesResult = await db.query(
@@ -132,7 +132,7 @@ router.post('/events/:id/files', requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 's3Key, fileName, and fileType are required' });
   }
   try {
-    const db = getDb();
+    const db = await getDb();
 
     // Verify event exists
     const event = await db.query('SELECT id FROM events WHERE id = $1', [req.params.id]);
@@ -153,7 +153,7 @@ router.post('/events/:id/files', requireAdmin, async (req, res) => {
 // DELETE /api/v1/events/:id/files/:fileId  [admin]
 router.delete('/events/:id/files/:fileId', requireAdmin, async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const { rows } = await db.query(
       'DELETE FROM event_files WHERE id = $1 AND event_id = $2 RETURNING s3_key',
       [req.params.fileId, req.params.id],
@@ -171,7 +171,7 @@ router.delete('/events/:id/files/:fileId', requireAdmin, async (req, res) => {
 // GET /api/v1/events/:id/registrations  [admin]
 router.get('/events/:id/registrations', requireAdmin, async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const { rows } = await db.query(
       'SELECT * FROM event_registrations WHERE event_id = $1 ORDER BY registered_at DESC',
       [req.params.id],

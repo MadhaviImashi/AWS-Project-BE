@@ -33,7 +33,7 @@ export const handler = async (event: any) => {
 
   try {
     // Create user record in RDS
-    const db = getDb();
+    const db = await getDb();
     await db.query(
       `INSERT INTO users (cognito_sub, email, name)
        VALUES ($1, $2, $3)

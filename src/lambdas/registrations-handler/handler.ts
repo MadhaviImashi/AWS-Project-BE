@@ -25,7 +25,7 @@ const router = express.Router();
 
 // POST /api/v1/registrations/:eventId  — register for an event
 router.post('/registrations/:eventId', async (req, res) => {
-  const db = getDb();
+  const db = await getDb();
   const userSub = getUserSub(req);
   const userEmail = getUserEmail(req);
   const claims = getClaims(req);
@@ -70,7 +70,7 @@ router.post('/registrations/:eventId', async (req, res) => {
 // DELETE /api/v1/registrations/:eventId  — cancel registration
 router.delete('/registrations/:eventId', async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const { rowCount } = await db.query(
       'DELETE FROM event_registrations WHERE event_id = $1 AND user_sub = $2',
       [req.params.eventId, getUserSub(req)],
@@ -86,7 +86,7 @@ router.delete('/registrations/:eventId', async (req, res) => {
 // GET /api/v1/registrations/me  — list current user's registrations
 router.get('/registrations/me', async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const { rows } = await db.query(`
       SELECT r.*, e.title, e.date, e.time, e.description
       FROM event_registrations r
